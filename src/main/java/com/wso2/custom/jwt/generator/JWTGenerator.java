@@ -7,6 +7,9 @@ import org.wso2.carbon.apimgt.impl.token.ClaimsRetriever;
 import org.wso2.carbon.apimgt.impl.utils.APIUtil;
 import org.wso2.carbon.apimgt.keymgt.service.TokenValidationContext;
 import org.wso2.carbon.apimgt.keymgt.token.AbstractJWTGenerator;
+import org.wso2.carbon.identity.oauth2.IdentityOAuth2Exception;
+import org.wso2.carbon.identity.oauth2.model.AccessTokenDO;
+import org.wso2.carbon.identity.oauth2.util.OAuth2Util;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -19,6 +22,7 @@ public class JWTGenerator extends AbstractJWTGenerator{
     @Override
     public Map<String, String> populateStandardClaims(TokenValidationContext validationContext)
             throws APIManagementException {
+
 
         //generating expiring timestamp
         long currentTime = System.currentTimeMillis() ;
@@ -41,6 +45,15 @@ public class JWTGenerator extends AbstractJWTGenerator{
         String userType = validationContext.getValidationInfoDTO().getUserType();
         String applicationTier = validationContext.getValidationInfoDTO().getApplicationTier();
         String enduserTenantId = String.valueOf(APIUtil.getTenantId(endUserName));
+        String refreshToken = "";
+
+        try {
+            AccessTokenDO accessTokenDo = OAuth2Util.getAccessTokenDOfromTokenIdentifier(validationContext.getAccessToken());
+            refreshToken = accessTokenDo.getRefreshToken();
+        } catch (IdentityOAuth2Exception e) {
+            log.error("Error while retrieving the OAuth2 refresh token");
+        }
+
 
         Map<String, String> claims = new LinkedHashMap<String, String>(20);
 
@@ -57,9 +70,12 @@ public class JWTGenerator extends AbstractJWTGenerator{
         claims.put(dialect + "/usertype", userType);
         claims.put(dialect + "/enduser", APIUtil.getUserNameWithTenantSuffix(endUserName));
         claims.put(dialect + "/enduserTenantId", enduserTenantId);
-        claims.put("jti", validationContext.getAccessToken());
 
-        log.info("returning claims");
+        //Adding the OAuth access token
+        claims.put("access_token", validationContext.getAccessToken());
+
+        //Adding the OAuth refresh token
+        claims.put("refresh_token", refreshToken);
 
         return claims;
     }
@@ -72,7 +88,6 @@ public class JWTGenerator extends AbstractJWTGenerator{
         if (claimsRetriever != null) {
             String tenantAwareUserName = validationContext.getValidationInfoDTO().getEndUserName();
             try {
-                log.info("returning claims");
                 return claimsRetriever.getClaims(tenantAwareUserName);
 
             } catch (APIManagementException e) {
